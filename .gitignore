@@ -1,0 +1,7 @@
+.DS_Store
+saved_pairs
+models
+runs
+wandb
+.pth
+wandb
