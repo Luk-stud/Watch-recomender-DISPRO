@@ -1,0 +1,208 @@
+[
+    {
+        "Collection": "Luxury Classics",
+        "Watches": [
+            {
+                "Brand Name": "Patek Philippe",
+                "Model": "Calatrava",
+                "Reference": "5196J",
+                "Extra Details": {
+                    "Brand:": "Patek Philippe",
+                    "Family:": "Calatrava",
+                    "Reference:": "5196J-001",
+                    "Name:": "Calatrava 5196 Yellow Gold / Silver",
+                    "Movement:": "Patek Philippe caliber 215 PS\nHours, Minutes, Small Seconds",
+                    "Produced:": "2004",
+                    "Limited:": "No",
+                    "Material:": "Yellow Gold",
+                    "Glass:": "Sapphire",
+                    "Back:": "Closed",
+                    "Shape:": "Round",
+                    "Diameter:": "37.00 mm",
+                    "Height:": "7.68 mm",
+                    "W/R:": "30.00 m",
+                    "Color:": "Silver",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Dauphine",
+                    "Image Path": "scraping_output/images/Patek_Philippe/calatrava/Patek_Philippe_-_5196J-001_Calatrava_5196_Yellow_Gold___Silver_Case.jpg",
+                    "Model": "calatrava",
+                    "Brand": "Patek Philippe"
+                }
+            },
+            {
+                "Brand Name": "Vacheron Constantin",
+                "Model": "Patrimony",
+                "Reference": "81180/000P-9539",
+                "Extra Details": {
+                    "Brand:": "Vacheron Constantin",
+                    "Family:": "Patrimony",
+                    "Reference:": "81180/000P-9539",
+                    "Name:": "Patrimony Contemporaine 40 Manual-Winding Platinum / Grey",
+                    "Movement:": "Vacheron Constantin caliber 1400\nHours, Minutes",
+                    "Limited:": "No",
+                    "Material:": "Platinum",
+                    "Glass:": "Sapphire",
+                    "Back:": "Open",
+                    "Shape:": "Round",
+                    "Diameter:": "40.00 mm",
+                    "Height:": "6.79 mm",
+                    "W/R:": "30.00 m",
+                    "Color:": "Grey",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Stick",
+                    "Image Path": "scraping_output/images/Vacheron_Constantin/patrimony/Vacheron_Constantin_-_81180_000P-9539_Patrimony_Contemporaine_40_Manual-Winding_Platinum___Grey_Case.jpg",
+                    "Model": "patrimony",
+                    "Brand": "Vacheron Constantin"
+                }
+            },
+            {
+                "Brand Name": "Audemars Piguet",
+                "Model": "Royal Oak",
+                "Reference": "15400ST.OO.1220ST.01",
+                "Extra Details": {
+                    "Brand:": "Audemars Piguet",
+                    "Family:": "Royal Oak",
+                    "Reference:": "15400ST.OO.1220ST.01",
+                    "Name:": "Royal Oak 15400 Stainless Steel / Black",
+                    "Movement:": "Audemars Piguet caliber AP 3120\nHours, Minutes, Seconds | Date",
+                    "Produced:": "2012 - 2019",
+                    "Limited:": "No",
+                    "Material:": "Stainless Steel",
+                    "Glass:": "Sapphire",
+                    "Back:": "Open",
+                    "Shape:": "Other",
+                    "Diameter:": "41.00 mm",
+                    "Height:": "9.80 mm",
+                    "W/R:": "50.00 m",
+                    "Nickname:": "Grande Tapisserie",
+                    "Color:": "Black",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Stick",
+                    "Image Path": "scraping_output/images/Audemars_Piguet/royal-oak/Audemars_Piguet_-_15400ST.OO.1220ST.01_Royal_Oak_15400_Stainless_Steel___Black_Case.jpg",
+                    "Model": "royal-oak",
+                    "Brand": "Audemars Piguet"
+                }
+            }
+
+        ]
+    },
+    {
+        "Collection": "Sports Enthusiasts",
+        "Watches": [
+            {
+                "Brand Name": "Omega",
+                "Model": "Aqua Terra",
+                "Reference": "220.12.41.21.06.001",
+                "Extra Details": {
+                    "Brand:": "Omega",
+                    "Family:": "Aqua Terra",
+                    "Reference:": "220.12.41.21.06.001\n(aka: 22012412106001)",
+                    "Name:": "Seamaster Aqua Terra 150M Master Chronometer 41 Stainless Steel / Grey / Rubber",
+                    "Movement:": "Omega caliber 8900\nHours, Minutes, Seconds | Date | Chronometer, Co-Axial Escapement",
+                    "Produced:": "2017",
+                    "Limited:": "No",
+                    "Material:": "Stainless Steel",
+                    "Glass:": "Sapphire",
+                    "Back:": "Open",
+                    "Shape:": "Round",
+                    "Diameter:": "41.00 mm",
+                    "Lug Width:": "20.00 mm",
+                    "W/R:": "150.00 m",
+                    "Color:": "Grey",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Arrow",
+                    "Image Path": "scraping_output/images/Omega/aqua-terra/Omega_-_220.12.41.21.06.001_Seamaster_Aqua_Terra_150M_Master_Chronometer_41_Stainless_Steel___Grey___Rubber_Case.jpg",
+                    "Model": "aqua-terra",
+                    "Brand": "Omega"
+                }
+            },
+            {
+                "Brand Name": "TAG Heuer",
+                "Model": "Aquaracer",
+                "Reference": "WAY201A.BA0927",
+                "Extra Details": {
+                    "Brand:": "TAG Heuer",
+                    "Family:": "Aquaracer",
+                    "Reference:": "WAY201A.BA0927",
+                    "Name:": "Aquaracer 300M Calibre 5 41 Stainless Steel / Black / Steel",
+                    "Movement:": "TAG Heuer caliber Calibre 5\nHours, Minutes, Seconds | Date",
+                    "Limited:": "No",
+                    "Material:": "Stainless Steel",
+                    "Glass:": "Sapphire",
+                    "Back:": "Closed",
+                    "Shape:": "Round",
+                    "Diameter:": "43.00 mm",
+                    "W/R:": "300.00 m",
+                    "Color:": "Black",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Stick",
+                    "Image Path": "scraping_output/images/TAG_Heuer/aquaracer/TAG_Heuer_-_WAY201A.BA0927_Aquaracer_300M_Calibre_5_41_Stainless_Steel___Black___Steel_Case.jpg",
+                    "Model": "aquaracer",
+                    "Brand": "TAG Heuer"
+                }
+            }
+
+        ]
+    },
+
+
+    {
+        "Collection": "Dress Watches",
+        "Watches": [
+            {
+                "Brand Name": "Jaeger-LeCoultre",
+                "Model": "Reverso",
+                "Reference": "3958420",
+                "Extra Details": {
+                    "Brand:": "Jaeger-LeCoultre",
+                    "Family:": "Reverso",
+                    "Reference:": "3958420\n(aka: Q3958420)",
+                    "Name:": "Reverso Tribute Moon Stainless Steel / Silver / Alligator",
+                    "Movement:": "Jaeger-LeCoultre caliber 853/A\nHours, Minutes, Additional 12 Hour Hand (adjustable), Day / Night Indication | Date | Moonphase",
+                    "Produced:": "2017",
+                    "Limited:": "No",
+                    "Material:": "Stainless Steel",
+                    "Glass:": "Sapphire",
+                    "Back:": "Double Dial",
+                    "Shape:": "Rectangular",
+                    "Diameter:": "29.90 mm",
+                    "Height:": "10.90 mm",
+                    "W/R:": "30.00 m",
+                    "Color:": "Silver",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Dauphine",
+                    "Image Path": "scraping_output/images/Jaeger-LeCoultre/reverso/Jaeger-LeCoultre_-_3958420_Reverso_Tribute_Moon_Stainless_Steel___Silver___Alligator_Case.jpg",
+                    "Model": "reverso",
+                    "Brand": "Jaeger-LeCoultre"
+                }
+            },
+
+            {
+                "Brand Name": "Girard-Perregaux",
+                "Model": "1966",
+                "Reference": "49525-52-131-BK6A",
+                "Extra Details": {
+                    "Brand:": "Girard-Perregaux",
+                    "Family:": "1966",
+                    "Reference:": "49525-52-131-BK6A",
+                    "Name:": "1966 38 Pink Gold / Silver / Alligator",
+                    "Movement:": "Girard-Perregaux caliber GP03300-0030\nHours, Minutes, Seconds | Date",
+                    "Limited:": "No",
+                    "Material:": "Pink Gold",
+                    "Glass:": "Sapphire",
+                    "Back:": "Open",
+                    "Shape:": "Round",
+                    "Diameter:": "38.00 mm",
+                    "Height:": "8.50 mm",
+                    "W/R:": "30.00 m",
+                    "Color:": "Silver",
+                    "Indexes:": "Stick / Dot",
+                    "Hands:": "Feuille",
+                    "Image Path": "scraping_output/images/Girard-Perregaux/1966/Girard-Perregaux_-_49525-52-131-BK6A__1966_38_Pink_Gold___Silver___Alligator_Case.jpg",
+                    "Model": "1966",
+                    "Brand": "Girard-Perregaux"
+                }
+            }
+        ]
+    }
+]
