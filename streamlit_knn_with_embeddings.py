@@ -90,8 +90,7 @@ with left_col:
             selected_watch_path = st.session_state['random_watch']
 
         watch_dict = {path: (brand, family) for path, brand, family in zip(paths, brands, families)}
-        st.image(selected_watch_path, caption='Random Watch')
-        st.write(f"{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}")
+        st.image(selected_watch_path, caption=f"{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}")
 
     if selected_watch_path:
         if st.button('Find Similar Watches'):
