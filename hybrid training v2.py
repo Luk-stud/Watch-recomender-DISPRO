@@ -147,7 +147,7 @@ class PairDataset(Dataset):
     def __len__(self):
         return len(self.image_pairs)
 
-    def hard_mining(self, model, device, num_hard_pairs):
+    def hard_mining(self, model, device, num_hard_pairs, batch_size=128):
         print("Performing hard mining...")
         self.image_pairs = []
         self.labels = []
@@ -157,16 +157,22 @@ class PairDataset(Dataset):
         model.eval()
         for brand, images in self.grouped_images.items():
             brand_weight = self.brand_weights[brand]
-            img_tensors = [self.transform(Image.open(img).convert('RGB')).unsqueeze(0) for img in images]
+            num_images = len(images)
+            img_tensors = []
+            for img in images:
+                img_tensor = self.transform(Image.open(img).convert('RGB')).unsqueeze(0)
+                img_tensors.append(img_tensor)
             img_tensors = torch.cat(img_tensors).to(device)
-            
-            # Debugging: Check dimensions of input tensor
-            print(f"Processing brand '{brand}' with {len(images)} images")
-            print(f"Input tensor shape: {img_tensors.shape}")
 
+            # Process images in smaller batches
+            embeddings = []
             with torch.no_grad():
-                embeddings = model(img_tensors)
-            
+                for i in range(0, num_images, batch_size):
+                    batch_tensors = img_tensors[i:i + batch_size]
+                    batch_embeddings = model(batch_tensors)
+                    embeddings.append(batch_embeddings)
+            embeddings = torch.cat(embeddings)
+
             dists = torch.cdist(embeddings, embeddings)
             dists = dists.cpu().numpy()
 
@@ -192,23 +198,46 @@ class PairDataset(Dataset):
                 self.labels.append(0)
                 self.weights.append(brand_weight)
                 self.brand_labels.append(self.brand_to_idx[other_brand])
-        
+
         self.apply_max_pairs()
-        model.train()
+        self.save_pairs()
+# Initialize weights for the model
+def initialize_weights(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
 # Contrastive Loss Function
 class ContrastiveLoss(nn.Module):
-    def __init__(self, margin=1.0, loss_scale=3):
+    def __init__(self, margin=1.0, loss_scale=3, temperature=0.07):
         super(ContrastiveLoss, self).__init__()
         self.margin = margin
         self.loss_scale = loss_scale
+        self.temperature = temperature
 
     def forward(self, output1, output2, labels, weights):
         euclidean_distance = torch.nn.functional.pairwise_distance(output1, output2)
         loss_similar = (1 - labels) * weights * (euclidean_distance ** 2)
         loss_dissimilar = labels * weights * (self.margin - euclidean_distance).clamp(min=0) ** 2
         contrastive_loss = torch.mean(loss_similar + loss_dissimilar)
-        return contrastive_loss * self.loss_scale
+        return contrastive_loss * self.loss_scale / self.temperature
+
+class OrthogonalRegularization(nn.Module):
+    def __init__(self, lambda_orth=1e-4):
+        super(OrthogonalRegularization, self).__init__()
+        self.lambda_orth = lambda_orth
+
+    def forward(self, embeddings):
+        dot_product = torch.matmul(embeddings, embeddings.t())
+        identity = torch.eye(embeddings.size(0)).to(embeddings.device)
+        orth_loss = torch.norm(dot_product - identity, p='fro')
+        return self.lambda_orth * orth_loss
 
 # Class-Balanced Loss Function
 class ClassBalancedLoss(nn.Module):
@@ -230,29 +259,40 @@ class ClassBalancedLoss(nn.Module):
         loss = (loss_similar + loss_dissimilar) * weights_cb[brand_labels]
         return loss.mean()
 
-# Early stopping class
+# Custom early stopping class
 class EarlyStopping:
-    def __init__(self, patience=5, verbose=False):
+    def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pth'):
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
-        self.best_loss = None
+        self.best_score = None
         self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.delta = delta
+        self.path = path
 
-    def __call__(self, val_loss):
-        if self.best_loss is None:
-            self.best_loss = val_loss
-        elif val_loss > self.best_loss:
+    def __call__(self, val_loss, model):
+        score = -val_loss
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+        elif score < self.best_score + self.delta:
             self.counter += 1
-            if self.verbose:
-                print(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+            print(f"EarlyStopping counter: {self.counter} out of {self.patience}")
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
-            self.best_loss = val_loss
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
             self.counter = 0
 
-def train(model, train_loader, optimizer, scheduler, initial_criterion, final_criterion, switch_epoch, device, epochs, val_loader, early_stopping, train_dataset, log_interval=1):
+    def save_checkpoint(self, val_loss, model):
+        if self.verbose:
+            print(f"Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...")
+        torch.save(model.state_dict(), self.path)
+        self.val_loss_min = val_loss
+
+def train(model, train_loader, optimizer, scheduler, initial_criterion, final_criterion, switch_epoch, device, epochs, val_loader, early_stopping, train_dataset, orthogonal_regularizer, log_interval=1):
     print("Starting training...")
     criterion = initial_criterion
 
@@ -277,6 +317,11 @@ def train(model, train_loader, optimizer, scheduler, initial_criterion, final_cr
                 loss = criterion(output1, output2, labels, weights, brand_labels)
             else:
                 loss = criterion(output1, output2, labels, weights)
+
+            # Add orthogonal regularization loss
+            orth_loss = orthogonal_regularizer(torch.cat((output1, output2), dim=0))
+            loss += orth_loss
+
             loss.backward()
 
             # Gradient clipping
@@ -290,7 +335,7 @@ def train(model, train_loader, optimizer, scheduler, initial_criterion, final_cr
                 wandb.log({"Epoch": epoch + 1, "Batch Training Loss": loss.item(), "Step": i})
 
         # Validation step
-        val_loss = validate(model, val_loader, criterion, device)
+        val_loss = validate(model, val_loader, criterion, device, orthogonal_regularizer)
         wandb.log({"Epoch": epoch + 1, "Validation Loss": val_loss})
 
         # Early stopping check
@@ -301,29 +346,50 @@ def train(model, train_loader, optimizer, scheduler, initial_criterion, final_cr
 
         scheduler.step(val_loss)  # Update the learning rate after each epoch
 
+        # Save the model locally
+        model_path = f"model_epoch_{epoch + 1}.pth"
+        torch.save(model.state_dict(), model_path)
+        print(f"Saved model to {model_path}")
+
+        # Log the model to wandb
+        artifact = wandb.Artifact(f'model_epoch_{epoch + 1}', type='model')
+        artifact.add_file(model_path)
+        wandb.log_artifact(artifact)
+
         # Hard mining step
         if epoch < epochs - 1:
             train_dataset.hard_mining(model, device, num_hard_pairs=1000)
+            
+            # Debugging output to check dataset length after hard mining
+            print(f"After hard mining, dataset length is {len(train_dataset)}")
+            
+            # Reinitialize the DataLoader with the updated dataset
+            train_loader = DataLoader(train_dataset, batch_size=train_loader.batch_size, shuffle=True, num_workers=train_loader.num_workers)
 
     return model
 
-def validate(model, val_loader, criterion, device):
+def validate(model, val_loader, criterion, device, orthogonal_regularizer):
     model.eval()
-    total_loss = 0
+    val_loss = 0.0
     with torch.no_grad():
         for img1, img2, labels, weights, brand_labels in val_loader:
             img1, img2 = img1.to(device), img2.to(device)
             labels, weights = labels.to(device), weights.to(device)
-            brand_labels = brand_labels.to(device)  # Ensure brand_labels is a tensor
+            brand_labels = brand_labels.to(device)
             output1 = model(img1)
             output2 = model(img2)
             if isinstance(criterion, ClassBalancedLoss):
                 loss = criterion(output1, output2, labels, weights, brand_labels)
             else:
                 loss = criterion(output1, output2, labels, weights)
-            total_loss += loss.item()
-    return total_loss / len(val_loader)
 
+            # Add orthogonal regularization loss
+            orth_loss = orthogonal_regularizer(torch.cat((output1, output2), dim=0))
+            loss += orth_loss
+
+            val_loss += loss.item()
+    val_loss /= len(val_loader)
+    return val_loss
 
 # Function to create a weighted sampler for balanced mini-batches
 def create_weighted_sampler(dataset):
@@ -340,7 +406,6 @@ def create_weighted_sampler(dataset):
     sampler = WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
     return sampler
 
-
 # Function to check if saved pairs exist
 def check_for_saved_pairs(directory, dataset_type):
     save_dir = os.path.join(directory, dataset_type)
@@ -352,8 +417,10 @@ def check_for_saved_pairs(directory, dataset_type):
         print(f"No saved pairs found for {dataset_type}. Generating new pairs.")
         return False
 
-def main(weights_path=None):
-    seed_everything()
+
+def main(model_weights_path=None):
+    wandb.init(project="DISPRO_hybrid_training_v2")
+
     data_path = 'data/watches_database_main.json'
     raw_data = load_json_data(data_path)
     processed_data = prepare_dataframe(raw_data)
@@ -367,60 +434,44 @@ def main(weights_path=None):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    transform_val = transforms.Compose([
-        transforms.Resize((256)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-
     train_data, val_data = stratified_split_data(grouped_images, val_brands=val_brands)
     saved_pairs_dir = "saved_pairs"
     check_for_saved_pairs(saved_pairs_dir, "train")
     check_for_saved_pairs(saved_pairs_dir, "val")
 
-    wandb.init(project='watch_embedding_project', entity='DISPRO2', config={
-        "learning_rate": 0.00005,
-        "epochs": 10,  # Increased epochs for hard mining
-        "batch_size": 32,
-        "switch_epoch": 1,
-        "embedding_size": 30,
-        "initial_margin": 1.0,
-        "initial_loss_scale": 1,
-        "final_margin": 0.6,
-        "patience": 5
-    })
-
-    train_dataset = PairDataset(train_data, save_dir=saved_pairs_dir, dataset_type="train", max_pairs=2500)
+    train_dataset = PairDataset(train_data, save_dir=saved_pairs_dir, dataset_type="train", max_pairs=2000)
     val_dataset = PairDataset(val_data, save_dir=saved_pairs_dir, dataset_type="val", max_pairs=100)
 
+    batch_size = 32
+    num_workers = 4
+
     sampler = create_weighted_sampler(train_dataset)
-    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, sampler=sampler, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
-    model = WatchEmbeddingModel(embedding_size=wandb.config.embedding_size)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = WatchEmbeddingModel(embedding_size=30).to(device)
 
-    # Load weights if path provided
-    if weights_path and os.path.exists(weights_path):
-        model.load_state_dict(torch.load(weights_path, map_location=device))
-        print(f"Loaded model weights from {weights_path}")
-    elif weights_path:
-        print(f"Specified model weights not found at {weights_path}, starting training from scratch.")
+    # Initialize model weights
+    model.apply(initialize_weights)
 
-    initial_criterion = ContrastiveLoss(margin=wandb.config.initial_margin, loss_scale=wandb.config.initial_loss_scale)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
+    initial_criterion = ContrastiveLoss(margin=1.0)
     final_criterion = ClassBalancedLoss(brands_count=[len(images) for images in train_data.values()], beta=0.9999)
-    optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=1e-5)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=1, verbose=True)
-    early_stopping = EarlyStopping(patience=wandb.config.patience, verbose=True)
+    orthogonal_regularizer = OrthogonalRegularization(lambda_orth=1e-4)
+    
+    early_stopping = EarlyStopping(patience=7, verbose=True)
 
-    trained_model = train(model, train_loader, optimizer, scheduler, initial_criterion, final_criterion, wandb.config.switch_epoch, device, wandb.config.epochs, val_loader, early_stopping, train_dataset)
+    if model_weights_path:
+        model.load_state_dict(torch.load(model_weights_path))
+        print(f"Loaded model weights from {model_weights_path}")
 
-    visualize_brand_embeddings(model, grouped_images, device, val_brands, transform_val)
+    trained_model = train(model, train_loader, optimizer, scheduler, initial_criterion, final_criterion, wandb.config.switch_epoch, device, wandb.config.epochs, val_loader, early_stopping, train_dataset, orthogonal_regularizer)
+
+    visualize_brand_embeddings(model, grouped_images, device, val_brands, transform)
 
     wandb.finish()
 
-# Example of calling main with a specific model path
 if __name__ == "__main__":
-    model_weights_path = "model_epoch_1.pth"  # Change to your actual model path or set as None
-    main(model_weights_path)
+    main()
