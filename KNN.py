@@ -93,5 +93,5 @@ def main_knn(query_path, weights_path='model_epoch_2.pth', exclude_family=False,
 
 # Example of calling main_knn with a specific query image path
 if __name__ == "__main__":
-    query_path = "scraping_output/images/Wempe_Glashütte_I/SA/iron-walker/Wempe_Glashütte_I_SA_-_WI000006_Iron_Walker_Quartz_Men_Blue_Case.jpg"  # Change to your actual image path
+    query_path = "scraping_output/images/Norqain/adventure/Norqain_-_NN1001SC1CA_EB101-BGF_Adventure_Neverest_40_Stainless_Steel___Green___Black_-_Green_Flex_Case.jpg"  # Change to your actual image path
     main_knn(query_path, exclude_family=True, exclude_brand=False)  # Change exclude options as needed
