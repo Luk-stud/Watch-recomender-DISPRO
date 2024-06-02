@@ -3,5 +3,7 @@ saved_pairs
 models
 runs
 wandb
-.pth
+*.pth
 wandb
+*.h5
+*.json
