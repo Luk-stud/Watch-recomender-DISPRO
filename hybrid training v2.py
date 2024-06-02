@@ -442,8 +442,8 @@ def main(model_weights_path=None):
     train_dataset = PairDataset(train_data, save_dir=saved_pairs_dir, dataset_type="train", max_pairs=2000)
     val_dataset = PairDataset(val_data, save_dir=saved_pairs_dir, dataset_type="val", max_pairs=100)
 
-    batch_size = 32
-    num_workers = 4
+    batch_size = 512
+    num_workers = 12
 
     sampler = create_weighted_sampler(train_dataset)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers)

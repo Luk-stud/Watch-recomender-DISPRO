@@ -1,15 +1,11 @@
-import torch
-import torchvision.transforms as transforms
-from torch.utils.data import Dataset
+
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 from PIL import Image
 import json
 import matplotlib.pyplot as plt
 import random
-from util_div import *
-from util_model import *
-from util_visualise_embeddings import *
+
 
 def load_embeddings(embedding_file):
     with open(embedding_file, 'r') as f:
@@ -21,7 +17,7 @@ def load_embeddings(embedding_file):
     return embeddings, paths, brands, families
 
 def find_knn(embeddings, n_neighbors=5):
-    knn = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean')
+    knn = NearestNeighbors(n_neighbors=n_neighbors, metric='l2')
     knn.fit(embeddings)
     return knn
 
@@ -126,5 +122,5 @@ def main_knn(embedding_file_before, embedding_file_after, exclude_family=False, 
 # Example of calling main_knn with specific embedding files
 if __name__ == "__main__":
     embedding_file_before = "embeddings_stock.json"  # Change to your actual embedding file path
-    embedding_file_after = "embeddings_v3.json"    # Change to your actual embedding file path
+    embedding_file_after = "embeddings_clasifier_vibrant_blaze_33.json"    # Change to your actual embedding file path
     main_knn(embedding_file_before, embedding_file_after, exclude_family=True, exclude_brand=True)  # Change exclude options as needed

@@ -48,9 +48,9 @@ def clean_keys_and_convert_data(data):
     return cleaned_data
 
 if __name__ == "__main__":
-    input_json_path = 'scraping_output/all_watches.json'
-    input_json_path2 = 'scraping_output/cleaned_watches.json'
-    output_json_path = 'scraping_output/cleaned_watches2.json'
+    input_json_path = 'data/watches_database_main.json'
+    input_json_path2 = 'data/watches_database_main.json'
+    output_json_path = 'data/cleaned_watches v3.json'
     image_base_path = 'scraping_output/images'
 
     # Load the data
