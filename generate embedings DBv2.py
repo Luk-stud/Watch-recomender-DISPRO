@@ -19,6 +19,12 @@ class WatchDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
+        
+        # Check if image exists
+        if not os.path.exists(img_path):
+            print(f"Image {img_path} does not exist.")
+            return None, None
+
         img = Image.open(img_path).convert('RGB')
         if self.transform:
             img = self.transform(img)
@@ -31,6 +37,11 @@ def create_embeddings(model, dataset, device, image_info):
     with torch.no_grad():
         for idx in range(len(dataset)):
             image, img_path = dataset[idx]
+            
+            # Skip if the image does not exist
+            if image is None:
+                continue
+
             print(f"Processing image {img_path}...")
             image = image.to(device).unsqueeze(0)  # Add batch dimension
 
@@ -56,7 +67,7 @@ def create_embeddings(model, dataset, device, image_info):
     
     return embeddings_dict
 
-def save_embeddings(embeddings_dict, output_file='embeddings.json'):
+def save_embeddings(embeddings_dict, output_file='drawn-plasma-128.json'):
     with open(output_file, 'w') as f:
         json.dump(embeddings_dict, f)
     print(f"Embeddings saved to {output_file}")
@@ -88,7 +99,7 @@ def main_knn(weights_path):
 
     dataset = WatchDataset(image_paths, transform=transform)
 
-    embedding_size = 30
+    embedding_size = 5
     model = WatchEmbeddingModel(embedding_size=embedding_size)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
@@ -109,5 +120,5 @@ def main_knn(weights_path):
 
 # Example of calling main_knn with a specific model path and query index
 if __name__ == "__main__":
-    model_weights_path = "model_epoch_1.pth"  # Change to your actual model path
+    model_weights_path = "drawn-plasma-128.pth"  # Change to your actual model path
     main_knn(model_weights_path)

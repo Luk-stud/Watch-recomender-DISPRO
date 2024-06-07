@@ -76,10 +76,11 @@ def df_to_grouped_dict(df):
     grouped = df.groupby('Brand')
     return {brand: group['Image Path'].tolist() for brand, group in grouped}
 
-# PairDataset Class
-class PairDataset(Dataset):
-    def __init__(self, grouped_images, transform=None, sim_ratio=0.8, dataset_type="train", max_pairs=30000, image_cap=100):
+# TripletDataset Class
+class TripletDataset(Dataset):
+    def __init__(self, grouped_images, anchors, transform=None, max_pairs=30000, image_cap=1000):
         self.grouped_images = self.stratified_sample(grouped_images, image_cap)
+        self.anchors = anchors
         self.transform = transform or transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.CenterCrop(size=(224, 224)),
@@ -87,10 +88,8 @@ class PairDataset(Dataset):
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        self.sim_ratio = sim_ratio
         self.max_pairs = max_pairs
-        self.dataset_type = dataset_type
-        self.image_pairs, self.labels, self.weights = self.generate_pairs()
+        self.image_triples = self.generate_triples()
 
     def stratified_sample(self, grouped_images, image_cap):
         stratified_images = {}
@@ -102,72 +101,71 @@ class PairDataset(Dataset):
             stratified_images[brand] = sampled_images
         return stratified_images
 
-    def generate_pairs(self):
-        image_pairs = []
-        labels = []
-        weights = []
+    def generate_triples(self):
+        image_triples = []
         brands = list(self.grouped_images.keys())
-        temp_pairs = []
+        temp_triples = []
 
         for brand, images in self.grouped_images.items():
             valid_images = [img for img in images if os.path.exists(img)]
-            num_similar = int(len(valid_images) * (len(valid_images) - 1) / 2 * self.sim_ratio)
-            num_dissimilar = num_similar * (1 / self.sim_ratio - 1)
+            num_triples = len(valid_images) * 2  # You can adjust the number of triples as needed
 
-            for _ in range(num_similar):
-                i, j = np.random.choice(len(valid_images), 2, replace=False)
-                temp_pairs.append(((valid_images[i], valid_images[j]), 1, 1.0))
+            for _ in range(num_triples):
+                pos_img = random.choice(valid_images)
+                neg_brand = random.choice([b for b in brands if b != brand])
+                neg_img = random.choice(self.grouped_images[neg_brand])
+                temp_triples.append((self.anchors[brand], pos_img, neg_img))
 
-            other_brands = [b for b in brands if b != brand]
-            for _ in range(int(num_dissimilar)):
-                other_brand = np.random.choice(other_brands)
-                other_images = [img for img in self.grouped_images[other_brand] if os.path.exists(img)]
-                img1 = np.random.choice(valid_images)
-                img2 = np.random.choice(other_images)
-                temp_pairs.append(((img1, img2), 0, 1.0))
+        # Shuffle all triples to remove order bias
+        random.shuffle(temp_triples)
 
-        # Shuffle all pairs to remove order bias
-        random.shuffle(temp_pairs)
+        # Limit the number of triples
+        limited_triples = temp_triples[:self.max_pairs]
 
-        # Limit the number of pairs
-        limited_pairs = temp_pairs[:self.max_pairs]
+        for anchor, pos, neg in limited_triples:
+            image_triples.append((anchor, pos, neg))
 
-        for pair, label, weight in limited_pairs:
-            image_pairs.append(pair)
-            labels.append(label)
-            weights.append(weight)
-
-        return image_pairs, labels, weights
+        return image_triples
 
     def __getitem__(self, idx):
-        img1_path, img2_path = self.image_pairs[idx]
-        img1, img2 = Image.open(img1_path).convert('RGB'), Image.open(img2_path).convert('RGB')
+        anchor_emb, pos_path, neg_path = self.image_triples[idx]
+        pos_img = Image.open(pos_path).convert('RGB')
+        neg_img = Image.open(neg_path).convert('RGB')
         if self.transform:
-            img1, img2 = self.transform(img1), self.transform(img2)
-        label = torch.tensor(self.labels[idx], dtype=torch.float32)
-        weight = torch.tensor(self.weights[idx], dtype=torch.float32)
-        return img1, img2, label, weight
+            pos_img = self.transform(pos_img)
+            neg_img = self.transform(neg_img)
+        anchor_emb = torch.tensor(anchor_emb, dtype=torch.float32)
+        return anchor_emb, pos_img, neg_img
 
     def __len__(self):
-        return len(self.image_pairs)
+        return len(self.image_triples)
 
-
-class ContrastiveLoss(nn.Module):
-    def __init__(self, margin=1.0, loss_scale=3):
-        super(ContrastiveLoss, self).__init__()
+class TripletLoss(nn.Module):
+    def __init__(self, margin=1.0):
+        super(TripletLoss, self).__init__()
         self.margin = margin
-        self.loss_scale = loss_scale
 
-    def forward(self, output1, output2, labels, weights):
-        euclidean_distance = torch.nn.functional.pairwise_distance(output1, output2)
-        loss_similar = (1 - labels) * weights * (euclidean_distance ** 2)
-        loss_dissimilar = labels * weights * (self.margin - euclidean_distance).clamp(min=0) ** 2
-        contrastive_loss = torch.mean(loss_similar + loss_dissimilar)
-        return contrastive_loss * self.loss_scale
-    
+    def forward(self, anchor, positive, negative):
+        pos_distance = torch.nn.functional.pairwise_distance(anchor, positive)
+        neg_distance = torch.nn.functional.pairwise_distance(anchor, negative)
+        losses = F.relu(pos_distance - neg_distance + self.margin)
+        return losses.mean()
 
+def compute_anchors(model, grouped_images, device, transform):
+    anchors = {}
+    model.eval()
+    with torch.no_grad():
+        for brand, images in grouped_images.items():
+            embeddings = []
+            for img_path in images:
+                img = Image.open(img_path).convert('RGB')
+                img = transform(img).unsqueeze(0).to(device)
+                embedding = model(img)
+                embeddings.append(embedding.cpu().numpy())
+            anchors[brand] = np.mean(embeddings, axis=0)
+    return anchors
 
-def train(model, train_loader, optimizer, criterion, device, epochs, val_loader, log_interval=1, patience=5):
+def train_triplet(model, train_loader, optimizer, criterion, device, epochs, val_loader, log_interval=1, patience=5, grouped_images=None, transform=None):
     print("Starting training...")
     best_val_loss = float('inf')
     patience_counter = 0
@@ -180,21 +178,20 @@ def train(model, train_loader, optimizer, criterion, device, epochs, val_loader,
         running_loss = 0.0
         print(f"Epoch {epoch+1} starts...")
 
-        for i, (img1, img2, labels, weights) in enumerate(train_loader):
-            img1, img2 = img1.to(device), img2.to(device)
-            labels, weights = labels.to(device), weights.to(device)
+        for i, (anchor, pos_img, neg_img) in enumerate(train_loader):
+            pos_img, neg_img = pos_img.to(device), neg_img.to(device)
+            anchor = anchor.to(device)
             optimizer.zero_grad()
             
             with torch.cuda.amp.autocast():  # Mixed precision context
-                output1 = model(img1)
-                output2 = model(img2)
-                print(output1,output2)
+                pos_output = model(pos_img)
+                neg_output = model(neg_img)
 
                 # Normalize embeddings
-                output1 = F.normalize(output1, p=2, dim=1)
-                output2 = F.normalize(output2, p=2, dim=1)
+                pos_output = F.normalize(pos_output, p=2, dim=1)
+                neg_output = F.normalize(neg_output, p=2, dim=1)
 
-                loss = criterion(output1, output2, labels, weights)
+                loss = criterion(anchor, pos_output, neg_output)
 
             if torch.isnan(loss) or torch.isinf(loss):
                 print(f"Invalid loss detected at batch {i+1}. Skipping this batch.")
@@ -211,7 +208,7 @@ def train(model, train_loader, optimizer, criterion, device, epochs, val_loader,
                 print(f"At batch {i+1}, loss is {loss.item()}, learning rate is {current_lr}")
                 wandb.log({"Epoch": epoch + 1, "Batch Training Loss": loss.item(), "Step": i, "Learning Rate": current_lr})
 
-        val_loss = validate(model, val_loader, criterion, device)
+        val_loss = validate_triplet(model, val_loader, criterion, device)
         wandb.log({"Epoch": epoch + 1, "Validation Loss": val_loss})
         scheduler.step(val_loss)
 
@@ -233,25 +230,30 @@ def train(model, train_loader, optimizer, criterion, device, epochs, val_loader,
 
         print(f"Epoch {epoch + 1}, Validation Loss: {val_loss}")
 
+        # Update anchors
+        if grouped_images and transform and (epoch + 1)%3 == 0:
+            anchors = compute_anchors(model, grouped_images, device, transform)
+            train_loader.dataset.anchors = anchors
+
     return model
 
-def validate(model, val_loader, criterion, device):
+def validate_triplet(model, val_loader, criterion, device):
     model.eval()
     total_loss = 0
     with torch.no_grad():
-        for img1, img2, labels, weights in val_loader:
-            img1, img2 = img1.to(device), img2.to(device)
-            labels, weights = labels.to(device), weights.to(device)
+        for anchor, pos_img, neg_img in val_loader:
+            pos_img, neg_img = pos_img.to(device), neg_img.to(device)
+            anchor = anchor.to(device)
             
             with torch.cuda.amp.autocast():  # Mixed precision context
-                output1 = model(img1)
-                output2 = model(img2)
+                pos_output = model(pos_img)
+                neg_output = model(neg_img)
 
                 # Normalize embeddings
-                output1 = F.normalize(output1, p=2, dim=1)
-                output2 = F.normalize(output2, p=2, dim=1)
+                pos_output = F.normalize(pos_output, p=2, dim=1)
+                neg_output = F.normalize(neg_output, p=2, dim=1)
 
-                loss = criterion(output1, output2, labels, weights)
+                loss = criterion(anchor, pos_output, neg_output)
 
             if torch.isnan(loss) or torch.isinf(loss):
                 print("Invalid loss detected during validation. Skipping this batch.")
@@ -302,45 +304,46 @@ def main():
     ])
 
 
-    wandb.init(project='contrastive_loss', entity='DISPRO2', config={
-        "learning_rate": 0.0001,  # Initial learning rate for SGD
+    wandb.init(project='triplet_loss', entity='DISPRO2', config={
+        "learning_rate": 0.001,  # Initial learning rate for SGD
         "epochs": 50,
-        "batch_size": 512,  # Reduced batch size
-        "margin": 1.0,
-        "loss_type": "ContrastiveLoss",
-        "sim_ratio": 0.6,
+        "batch_size": 64,  # Reduced batch size
+        "margin": 0.5,
+        "loss_type": "TripletLoss",
         "max_pairs": 20000,
-        "image_cap": 100,
+        "image_cap": 1000,
         "patience": 10,
         "embedding_size": 5,
         "log_interval": 1,
     })
 
-    train_dataset = PairDataset(train_data, transform=transform, dataset_type="train", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
-    val_dataset = PairDataset(val_data, transform=transform, dataset_type="val", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
-    test_dataset = PairDataset(test_data, transform=transform, dataset_type="test", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
+    model = WatchEmbeddingModel(embedding_size=wandb.config.embedding_size)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    # Initial computation of anchors
+    anchors = compute_anchors(model, grouped_images, device, transform)
+
+    train_dataset = TripletDataset(train_data, anchors, transform=transform, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
+    val_dataset = TripletDataset(val_data, anchors, transform=transform, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
+    test_dataset = TripletDataset(test_data, anchors, transform=transform, max_pairs=wandb.config.max_pairs, image_cap=wandb.config.image_cap)
 
     train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=4)
 
-    model = WatchEmbeddingModel(embedding_size=wandb.config.embedding_size)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-
-    criterion = ContrastiveLoss(margin=wandb.config.margin, loss_scale=3)
-    
+    criterion = TripletLoss(margin=wandb.config.margin)
     optimizer = optim.SGD(model.parameters(), lr=wandb.config.learning_rate, momentum=0.9, weight_decay=1e-4)
 
     # Initial validation run
-    initial_val_loss = validate(model, val_loader, criterion, device)
+    initial_val_loss = validate_triplet(model, val_loader, criterion, device)
     print(f"Initial Validation Loss: {initial_val_loss}")
     wandb.log({"Validation Loss": initial_val_loss})
 
-    trained_model = train(model, train_loader, optimizer, criterion, device, wandb.config.epochs, val_loader)
+    trained_model = train_triplet(model, train_loader, optimizer, criterion, device, wandb.config.epochs, val_loader, grouped_images=grouped_images, transform=transform)
 
     print("Evaluating on test data...")
-    test_loss = validate(trained_model, test_loader, criterion, device)
+    test_loss = validate_triplet(trained_model, test_loader, criterion, device)
     print(f"Test Loss: {test_loss}")
     wandb.log({"Test Loss": test_loss})
 

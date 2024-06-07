@@ -2,7 +2,7 @@
 saved_pairs
 models
 runs
-wandb
+wandb/*
 *.pth
 wandb
 *.h5

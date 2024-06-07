@@ -1,14 +1,10 @@
-import torch
-import torchvision.transforms as transforms
-from torch.utils.data import Dataset
+
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 from PIL import Image
 import json
 import matplotlib.pyplot as plt
-from util_div import *
-from util_model import *
-from util_visualise_embeddings import *
+
 
 def load_embeddings(embedding_file):
     with open(embedding_file, 'r') as f:

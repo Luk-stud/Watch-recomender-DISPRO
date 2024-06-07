@@ -8,14 +8,14 @@ class WatchEmbeddingModel(nn.Module):
         super(WatchEmbeddingModel, self).__init__()
         base_model = vgg16(weights=VGG16_Weights.DEFAULT)
         if train_deep_layers:
-            for param in base_model.features[-3:].parameters():
+            for param in base_model.features[-2:].parameters():
                 param.requires_grad = True
         self.features = base_model.features
         self.avgpool = base_model.avgpool
         self.embedder = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.7),
+            nn.Dropout(p=0.5),
             nn.Linear(4096, embedding_size),
             nn.ReLU(inplace=True)
         )
@@ -26,6 +26,5 @@ class WatchEmbeddingModel(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.embedder(x)
         return x
-    
 
 
