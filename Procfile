@@ -1,0 +1,1 @@
+streamlit run streamlit_knn_with_embeddings.py

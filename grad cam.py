@@ -47,7 +47,7 @@ def create_vgg_model(num_classes, fc_layer_size, embedding_size, weight_decay=0.
 
 # Instantiate the model
 num_classes = 92  # Ensure this matches the number of classes during training
-fc_layer_size = 256
+fc_layer_size = 128
 embedding_size = 10
 
 model = create_vgg_model(num_classes, fc_layer_size, embedding_size)

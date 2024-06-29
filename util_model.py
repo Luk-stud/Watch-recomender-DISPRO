@@ -15,7 +15,11 @@ class WatchEmbeddingModel(nn.Module):
         self.embedder = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(inplace=True),
+            nn.Dropout(p=0.6),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
+            nn.Linear(4096, 4096),
             nn.Linear(4096, embedding_size),
             nn.ReLU(inplace=True)
         )

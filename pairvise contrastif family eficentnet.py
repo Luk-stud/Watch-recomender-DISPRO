@@ -14,8 +14,41 @@ from sklearn.model_selection import train_test_split
 import random
 import torch.nn.functional as F
 from util_div import *
-from util_model import *
 from util_visualise_embeddings import *
+import torch.nn as nn
+from torchvision.models import efficientnet_b0
+
+class WatchEmbeddingModel(nn.Module):
+    def __init__(self, embedding_size, train_deep_layers=True):
+        super(WatchEmbeddingModel, self).__init__()
+        base_model = efficientnet_b0(weights=None)  # No pre-trained weights
+
+        # Optionally freeze the initial layers
+        if not train_deep_layers:
+            for param in base_model.parameters():
+                param.requires_grad = False
+
+        self.features = base_model.features
+        self.avgpool = base_model.avgpool
+
+        # Adding custom embedding layers
+        self.embedder = nn.Sequential(
+            nn.Linear(1280, 1024),  # 1280 is the output size of EfficientNet's last conv layer
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.4),
+            nn.Linear(512, embedding_size),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)  # Flatten the output to (batch_size, 1280)
+        x = self.embedder(x)
+        return x
 
 # Load JSON data
 def load_json_data(file_path):
@@ -41,29 +74,28 @@ def filter_valid_families(df, min_families=3, min_images_per_family=5):
             valid_rows.append(group[group['Family'].isin(valid_families)])
     return pd.concat(valid_rows)
 
-# Split the data by family ensuring different families in each split
 def split_by_family(df):
     train_rows = []
     val_rows = []
     test_rows = []
-    grouped = df.groupby('Brand')
+    grouped = df.groupby('Family')
     
-    for brand, group in grouped:
-        families = group['Family'].unique()
-        if len(families) >= 5:  # Ensure there are at least 3 families to split into train, val, test
-            train_families, test_families = train_test_split(families, test_size=0.2, random_state=13)
-            train_families, val_families = train_test_split(train_families, test_size=0.25, random_state=13)  # 0.25 * 0.8 = 0.2
-        elif len(families) == 3:  # Split into train and test only
-            train_families, test_families = train_test_split(families, test_size=0.5, random_state=13)
-            val_families = train_families  # Use train families for validation as well
-        else:  # All data goes to train if there is only one family
-            train_families = families
-            val_families = families
-            test_families = families
+    for family, group in grouped:
+        brands = group['Brand'].unique()
+        if len(brands) >= 5:  # Ensure there are at least 3 brands to split into train, val, test
+            train_brands, test_brands = train_test_split(brands, test_size=0.2, random_state=13)
+            train_brands, val_brands = train_test_split(train_brands, test_size=0.25, random_state=13)  # 0.25 * 0.8 = 0.2
+        elif len(brands) == 3:  # Split into train and test only
+            train_brands, test_brands = train_test_split(brands, test_size=0.5, random_state=13)
+            val_brands = train_brands  # Use train brands for validation as well
+        else:  # All data goes to train if there is only one brand
+            train_brands = brands
+            val_brands = brands
+            test_brands = brands
         
-        train_rows.append(group[group['Family'].isin(train_families)])
-        val_rows.append(group[group['Family'].isin(val_families)])
-        test_rows.append(group[group['Family'].isin(test_families)])
+        train_rows.append(group[group['Brand'].isin(train_brands)])
+        val_rows.append(group[group['Brand'].isin(val_brands)])
+        test_rows.append(group[group['Brand'].isin(test_brands)])
     
     train_df = pd.concat(train_rows)
     val_df = pd.concat(val_rows)
@@ -71,20 +103,26 @@ def split_by_family(df):
     
     return train_df, val_df, test_df
 
-# Convert DataFrame to dictionary grouped by brand
+# Convert DataFrame to dictionary grouped by family
 def df_to_grouped_dict(df):
-    grouped = df.groupby('Brand')
-    return {brand: group['Image Path'].tolist() for brand, group in grouped}
+    grouped = df.groupby('Family')
+    return {family: group['Image Path'].tolist() for family, group in grouped}
 
 # PairDataset Class
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 class PairDataset(Dataset):
     def __init__(self, grouped_images, transform=None, sim_ratio=0.8, dataset_type="train", max_pairs=3000, max_val_pairs=500, max_test_pairs=500, image_cap=100):
         print(f"Initializing PairDataset for {dataset_type} data...")
-        self.grouped_images = self.oversample_brands(grouped_images, image_cap)
+        self.grouped_images = self.oversample_families(grouped_images, image_cap)
         self.transform = transform or transforms.Compose([
-            transforms.Resize((256, 256)),
-            transforms.CenterCrop(size=(224, 224)),
-            transforms.RandomCrop(size=(112, 112)),
+            transforms.Resize((512, 512)),
+            transforms.CenterCrop(size=(256, 256)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(degrees=15),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            transforms.RandomCrop(size=(224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
@@ -98,59 +136,68 @@ class PairDataset(Dataset):
             self.max_pairs = max_val_pairs
         else:
             self.max_pairs = max_test_pairs
-        print("grouped images after ovesampling", len(self.grouped_images))
-        print("max pairs",self.max_pairs)
-        print("max pairs per brand",self.max_pairs // len(self.grouped_images) )
-        self.max_pairs_per_brand = max(1, self.max_pairs // len(self.grouped_images))  # Adding limit per brand
+
+        print("Grouped images after oversampling", len(self.grouped_images))
+        self.max_pairs_per_family = max(1, self.max_pairs // len(self.grouped_images))  # Adding limit per family
         self.image_pairs, self.labels, self.weights = self.generate_pairs()
         print(f"PairDataset for {dataset_type} data initialized with {len(self.image_pairs)} pairs.")
 
-    def oversample_brands(self, grouped_images, image_cap):
+    def oversample_families(self, grouped_images, image_cap):
         oversampled_images = {}
-        max_samples_per_brand = min(image_cap, max(len(images) for images in grouped_images.values()))
-        print(f"Max samples per brand: {max_samples_per_brand}")
+        max_samples_per_family = min(image_cap, max(len(images) for images in grouped_images.values()))
+        print(f"Max samples per family: {max_samples_per_family}")
 
-        for brand, images in grouped_images.items():
-            if len(images) < max_samples_per_brand:
-                extra_samples = random.choices(images, k=max_samples_per_brand - len(images))
+        for family, images in grouped_images.items():
+            if len(images) < max_samples_per_family:
+                extra_samples = random.choices(images, k=max_samples_per_family - len(images))
                 images.extend(extra_samples)
-            oversampled_images[brand] = images[:max_samples_per_brand]
+            oversampled_images[family] = images[:max_samples_per_family]
 
-        print(f"Oversampling completed for {len(oversampled_images)} brands.")
+        print(f"Oversampling completed for {len(oversampled_images)} families.")
         return oversampled_images
 
     def generate_pairs(self):
         image_pairs = []
         labels = []
         weights = []
-        brands = list(self.grouped_images.keys())
+        families = list(self.grouped_images.keys())
         temp_pairs = []
 
-        for brand, images in self.grouped_images.items():
+        def generate_family_pairs(family, images):
             valid_images = [img for img in images if os.path.exists(img)]
             if len(valid_images) < 2:
-                continue  # Skip brands with less than 2 valid images
+                return []
 
-            num_similar = min(int(len(valid_images) * (len(valid_images) - 1) / 2 * self.sim_ratio), self.max_pairs_per_brand)
-            num_dissimilar = min(int(num_similar * (1 / self.sim_ratio - 1)), self.max_pairs_per_brand)
-            print(f"Generating {num_similar} similar and {num_dissimilar} dissimilar pairs for brand {brand}...")
+            num_similar = min(int(len(valid_images) * (len(valid_images) - 1) / 2 * self.sim_ratio), self.max_pairs_per_family)
+            num_dissimilar = min(int(num_similar * (1 / self.sim_ratio - 1)), self.max_pairs_per_family)
+            print(f"Generating {num_similar} similar and {num_dissimilar} dissimilar pairs for family {family}...")
+
+            family_pairs = []
 
             for _ in range(num_similar):
                 i, j = np.random.choice(len(valid_images), 2, replace=False)
-                temp_pairs.append(((valid_images[i], valid_images[j]), 1, 1.0))
+                family_pairs.append(((valid_images[i], valid_images[j]), 1, 1.0))
                 if _ % 100 == 0:
-                    print(f"Generated {_} similar pairs for brand {brand}")
+                    print(f"Generated {_} similar pairs for family {family}")
 
-            other_brands = [b for b in brands if b != brand]
+            other_families = [f for f in families if f != family]
             for _ in range(num_dissimilar):
-                other_brand = np.random.choice(other_brands)
-                other_images = [img for img in self.grouped_images[other_brand] if os.path.exists(img)]
+                other_family = np.random.choice(other_families)
+                other_images = [img for img in self.grouped_images[other_family] if os.path.exists(img)]
                 if other_images:
                     img1 = np.random.choice(valid_images)
                     img2 = np.random.choice(other_images)
-                    temp_pairs.append(((img1, img2), 0, 1.0))
+                    family_pairs.append(((img1, img2), 0, 1.0))
                 if _ % 100 == 0:
-                    print(f"Generated {_} dissimilar pairs for brand {brand}")
+                    print(f"Generated {_} dissimilar pairs for family {family}")
+
+            return family_pairs
+
+        # Parallelize pair generation
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            futures = [executor.submit(generate_family_pairs, family, images) for family, images in self.grouped_images.items()]
+            for future in as_completed(futures):
+                temp_pairs.extend(future.result())
 
         print("Shuffling pairs...")
         random.shuffle(temp_pairs)
@@ -178,8 +225,6 @@ class PairDataset(Dataset):
     def __len__(self):
         return len(self.image_pairs)
 
-
-
 class ContrastiveLoss(nn.Module):
     def __init__(self, margin=1.0, loss_scale=3):
         super(ContrastiveLoss, self).__init__()
@@ -193,15 +238,14 @@ class ContrastiveLoss(nn.Module):
         contrastive_loss = torch.mean(loss_similar + loss_dissimilar)
         return contrastive_loss * self.loss_scale
 
-
-
 def train(model, train_loader, optimizer, criterion, device, epochs, val_loader, log_interval=1, patience=5):
     print("Starting training...")
     best_val_loss = float('inf')
     patience_counter = 0
 
     scaler = torch.cuda.amp.GradScaler()  # Initialize scaler for mixed precision training
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+    scheduler_patience = patience//3
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=scheduler_patience)
 
     for epoch in range(epochs):
         model.train()
@@ -256,7 +300,7 @@ def train(model, train_loader, optimizer, criterion, device, epochs, val_loader,
 
         if patience_counter >= patience:
             print(f"Early stopping at epoch {epoch+1}")
-            break
+            #break
 
         print(f"Epoch {epoch + 1}, Validation Loss: {val_loss}")
 
@@ -295,16 +339,16 @@ def main():
     df = pd.DataFrame(data)
     df = check_image_paths(df, 'Image Path')
 
-    brand_encoder = LabelEncoder()
-    df['Brand'] = brand_encoder.fit_transform(df['Brand'])
-    df['Brand'] = df['Brand'].apply(str)  # Convert the 'Brand' column to string
-    df['Family'] = df['Family'].apply(lambda x: x.strip() if pd.notnull(x) else x)
+    family_encoder = LabelEncoder()
+    df['Family'] = family_encoder.fit_transform(df['Family'])
+    df['Family'] = df['Family'].apply(str)  # Convert the 'Family' column to string
+    df['Brand'] = df['Brand'].apply(lambda x: x.strip() if pd.notnull(x) else x)
 
-    # Filter out classes with fewer entries
+    # Filter out families with fewer entries
     min_entries = 5  # Define the minimum number of entries required per class
-    brand_counts = df['Brand'].value_counts()
-    valid_brands = brand_counts[brand_counts >= min_entries].index
-    df = df[df['Brand'].isin(valid_brands)]
+    family_counts = df['Family'].value_counts()
+    valid_families = family_counts[family_counts >= min_entries].index
+    df = df[df['Family'].isin(valid_families)]
 
     df = filter_valid_families(df)
 
@@ -317,29 +361,29 @@ def main():
     grouped_images = df_to_grouped_dict(df)
 
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop(size=(224, 224)),
+        transforms.Resize((512, 512)),
+        transforms.CenterCrop(size=(256, 256)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(degrees=15),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandomCrop(size=(112, 112)),
+        transforms.RandomCrop(size=(224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     wandb.init(project='contrastive_loss', entity='DISPRO2', config={
-        "learning_rate": 0.001,  # Initial learning rate for SGD
-        "epochs": 50,
-        "batch_size": 512,  # Reduced batch size
-        "margin": 2,
+        "learning_rate": 2,  # Initial learning rate for SGD
+        "epochs": 200,
+        "batch_size": 200,  # Reduced batch size
+        "margin": 1.0,
         "loss_type": "ContrastiveLoss",
-        "sim_ratio": 0.8,
-        "max_pairs": 40000,
-        "max_val_pairs": 5000,  # Limit for validation pairs
-        "max_test_pairs": 5000,  # Limit for test pairs
+        "sim_ratio": 0.5,
+        "max_pairs": 4000,
+        "max_val_pairs": 500,  # Limit for validation pairs
+        "max_test_pairs": 500,  # Limit for test pairs
         "image_cap": 1000,
-        "patience": 10,
+        "patience": 3,
         "embedding_size": 128,
         "log_interval": 1,
     })
@@ -347,14 +391,14 @@ def main():
     print("Creating train dataset...")
     train_dataset = PairDataset(train_data, transform=transform, dataset_type="train", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, max_val_pairs=wandb.config.max_val_pairs, max_test_pairs=wandb.config.max_test_pairs, image_cap=wandb.config.image_cap)
     print("Creating val dataset...")
-    val_dataset = PairDataset(val_data, transform=transform, dataset_type="val", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, max_val_pairs=wandb.config.max_val_pairs, max_test_pairs=wandb.config.max_test_pairs, image_cap=wandb.config.image_cap)
+    val_dataset = PairDataset(val_data, transform=transform, dataset_type="val", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_val_pairs, max_val_pairs=wandb.config.max_val_pairs, max_test_pairs=wandb.config.max_test_pairs, image_cap=wandb.config.image_cap)
     print("Creating test dataset...")
-    test_dataset = PairDataset(test_data, transform=transform, dataset_type="test", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_pairs, max_val_pairs=wandb.config.max_val_pairs, max_test_pairs=wandb.config.max_test_pairs, image_cap=wandb.config.image_cap)
+    test_dataset = PairDataset(test_data, transform=transform, dataset_type="test", sim_ratio=wandb.config.sim_ratio, max_pairs=wandb.config.max_test_pairs, max_val_pairs=wandb.config.max_val_pairs, max_test_pairs=wandb.config.max_test_pairs, image_cap=wandb.config.image_cap)
 
     print("Creating data loaders...")
-    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=12)
-    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=12)
-    test_loader = DataLoader(test_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=12)
+    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8)
+    test_loader = DataLoader(test_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8)
 
     print("Initializing model...")
     model = WatchEmbeddingModel(embedding_size=wandb.config.embedding_size)

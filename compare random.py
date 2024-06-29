@@ -1,4 +1,3 @@
-
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 from PIL import Image
@@ -16,12 +15,12 @@ def load_embeddings(embedding_file):
     families = [v['family'] for v in embeddings_dict.values()]
     return embeddings, paths, brands, families
 
-def find_knn(embeddings, n_neighbors=5):
-    knn = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean')
+def find_knn(embeddings, n_neighbors=20):
+    knn = NearestNeighbors(n_neighbors=n_neighbors, metric='cosine')
     knn.fit(embeddings)
     return knn
 
-def knn_query(knn, query_embedding, n_neighbors=5):
+def knn_query(knn, query_embedding, n_neighbors=20):
     distances, indices = knn.kneighbors([query_embedding], n_neighbors=n_neighbors)
     return distances, indices
 
@@ -55,14 +54,40 @@ def visualize_results(query_path, neighbor_paths_before, neighbor_paths_after, d
     plt.tight_layout()
     plt.show()
 
-def main_knn(embedding_file_before, embedding_file_after, exclude_family=False, exclude_brand=False):
+def filter_by_family(paths, distances, families):
+    unique_families = set()
+    filtered_paths = []
+    filtered_distances = []
+    for path, distance, family in zip(paths, distances, families):
+        if family not in unique_families:
+            unique_families.add(family)
+            filtered_paths.append(path)
+            filtered_distances.append(distance)
+        if len(filtered_paths) == 5:  # Ensure we only keep up to 5 results
+            break
+    return filtered_paths, filtered_distances
+
+def filter_by_brand(paths, distances, brands):
+    unique_brands = set()
+    filtered_paths = []
+    filtered_distances = []
+    for path, distance, brand in zip(paths, distances, brands):
+        if brand not in unique_brands:
+            unique_brands.add(brand)
+            filtered_paths.append(path)
+            filtered_distances.append(distance)
+        if len(filtered_paths) == 5:  # Ensure we only keep up to 5 results
+            break
+    return filtered_paths, filtered_distances
+
+def main_knn(embedding_file_before, embedding_file_after, exclude_family=False, exclude_brand=False, filter_by_brand_family='family'):
     # Load embeddings from both JSON files
     embeddings_before, paths_before, brands_before, families_before = load_embeddings(embedding_file_before)
     embeddings_after, paths_after, brands_after, families_after = load_embeddings(embedding_file_after)
 
     # Get 10 random watches from different brands
     unique_brands = list(set(brands_before))
-    selected_brands = random.sample(unique_brands, 10)
+    selected_brands = random.sample(unique_brands, 20)
     selected_indices = [brands_before.index(brand) for brand in selected_brands]
 
     for query_index in selected_indices:
@@ -89,26 +114,49 @@ def main_knn(embedding_file_before, embedding_file_after, exclude_family=False, 
 
         filtered_embeddings_before = embeddings_before[valid_indices_before]
         filtered_paths_before = [paths_before[i] for i in valid_indices_before]
+        filtered_brands_before = [brands_before[i] for i in valid_indices_before]
+        filtered_families_before = [families_before[i] for i in valid_indices_before]
 
         filtered_embeddings_after = embeddings_after[valid_indices_after]
         filtered_paths_after = [paths_after[i] for i in valid_indices_after]
+        filtered_brands_after = [brands_after[i] for i in valid_indices_after]
+        filtered_families_after = [families_after[i] for i in valid_indices_after]
 
-        # Initialize k-NN
-        knn_before = find_knn(filtered_embeddings_before, n_neighbors=5)
-        knn_after = find_knn(filtered_embeddings_after, n_neighbors=5)
+        # Initialize k-NN with more neighbors than needed to allow for filtering
+        knn_before = find_knn(filtered_embeddings_before, n_neighbors=20)
+        knn_after = find_knn(filtered_embeddings_after, n_neighbors=20)
 
         # Query for the nearest neighbors of a specific watch
-        distances_before, indices_before = knn_query(knn_before, query_embedding_before, n_neighbors=5)
-        distances_after, indices_after = knn_query(knn_after, query_embedding_after, n_neighbors=5)
+        distances_before, indices_before = knn_query(knn_before, query_embedding_before, n_neighbors=20)
+        distances_after, indices_after = knn_query(knn_after, query_embedding_after, n_neighbors=20)
 
-        # Display the results
-        print(f"Query Watch: {query_path}")
-
+        # Retrieve paths and distances for nearest neighbors before and after training
         neighbor_paths_before = [filtered_paths_before[i] for i in indices_before[0]]
         neighbor_distances_before = distances_before[0]
+        neighbor_families_before = [filtered_families_before[i] for i in indices_before[0]]
+        neighbor_brands_before = [filtered_brands_before[i] for i in indices_before[0]]
 
         neighbor_paths_after = [filtered_paths_after[i] for i in indices_after[0]]
         neighbor_distances_after = distances_after[0]
+        neighbor_families_after = [filtered_families_after[i] for i in indices_after[0]]
+        neighbor_brands_after = [filtered_brands_after[i] for i in indices_after[0]]
+
+        # Filter the results to show only one neighbor per family or brand
+        if filter_by_brand_family == 'family':
+            neighbor_paths_before, neighbor_distances_before = filter_by_family(neighbor_paths_before, neighbor_distances_before, neighbor_families_before)
+            neighbor_paths_after, neighbor_distances_after = filter_by_family(neighbor_paths_after, neighbor_distances_after, neighbor_families_after)
+        elif filter_by_brand_family == 'brand':
+            neighbor_paths_before, neighbor_distances_before = filter_by_brand(neighbor_paths_before, neighbor_distances_before, neighbor_brands_before)
+            neighbor_paths_after, neighbor_distances_after = filter_by_brand(neighbor_paths_after, neighbor_distances_after, neighbor_brands_after)
+
+        # Ensure we only keep up to 5 results
+        neighbor_paths_before = neighbor_paths_before[:5]
+        neighbor_distances_before = neighbor_distances_before[:5]
+        neighbor_paths_after = neighbor_paths_after[:5]
+        neighbor_distances_after = neighbor_distances_after[:5]
+
+        # Display the results
+        print(f"Query Watch: {query_path}")
 
         for i, (neighbor_path, distance) in enumerate(zip(neighbor_paths_before, neighbor_distances_before)):
             print(f"Before Training - Neighbor {i + 1}: {neighbor_path} with distance {distance}")
@@ -122,5 +170,5 @@ def main_knn(embedding_file_before, embedding_file_after, exclude_family=False, 
 # Example of calling main_knn with specific embedding files
 if __name__ == "__main__":
     embedding_file_before = "embeddings_stock.json"  # Change to your actual embedding file path
-    embedding_file_after = "drawn-plasma-128.json"    # Change to your actual embedding file path
-    main_knn(embedding_file_before, embedding_file_after, exclude_family=True, exclude_brand=True)  # Change exclude options as needed
+    embedding_file_after = "embeddings_classifier_family_v2.json"    # Change to your actual embedding file path
+    main_knn(embedding_file_before, embedding_file_after, exclude_family=True, exclude_brand=False, filter_by_brand_family='family')  # Change exclude options as needed

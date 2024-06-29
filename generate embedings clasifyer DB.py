@@ -1,110 +1,97 @@
-
-#trained_vgg_model.h5
-#embeddings_clasifier_vibrant_blaze_33.json
-import tensorflow as tf
-from tensorflow.keras.applications import EfficientNetB0
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.efficientnet import preprocess_input
-from tensorflow.keras.models import load_model
-import numpy as np
-import json
 import os
+import json
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+from tqdm import tqdm
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 
-class WatchDataset(tf.data.Dataset):
-    def __new__(cls, image_paths, transform=None):
-        cls.image_paths = image_paths
-        cls.transform = transform
-        dataset = tf.data.Dataset.from_tensor_slices(image_paths)
-        dataset = dataset.filter(cls.file_exists)
-        dataset = dataset.map(cls.load_and_preprocess_image)
-        return dataset
+# Define the model class
+class WatchClassificationModel(nn.Module):
+    def __init__(self, num_classes):
+        super(WatchClassificationModel, self).__init__()
+        self.base_model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+        self.base_model.classifier[1] = nn.Linear(self.base_model.classifier[1].in_features, num_classes)
+        
+    def forward(self, x):
+        return self.base_model(x)
 
-    @staticmethod
-    def file_exists(img_path):
-        def _py_file_exists(img_path):
-            return np.array(os.path.exists(img_path.numpy().decode('utf-8')), dtype=np.bool_)
-        return tf.py_function(_py_file_exists, [img_path], tf.bool)
+# Dataset class to load images
+class WatchDataset(Dataset):
+    def __init__(self, image_paths, image_info, transform=None):
+        self.image_paths = image_paths
+        self.image_info = image_info
+        self.transform = transform or transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
-    @staticmethod
-    def load_and_preprocess_image(img_path):
-        img = tf.io.read_file(img_path)
-        img = tf.image.decode_jpeg(img, channels=3)
-        img = tf.image.resize(img, [224, 224])
-        img = preprocess_input(img)
-        return img, img_path
+    def __len__(self):
+        return len(self.image_paths)
 
-class F1Score(tf.keras.metrics.Metric):
-    def __init__(self, name='f1_score', **kwargs):
-        super(F1Score, self).__init__(name=name, **kwargs)
-        self.precision = self.add_weight(name='precision', initializer='zeros')
-        self.recall = self.add_weight(name='recall', initializer='zeros')
-        self.f1 = self.add_weight(name='f1', initializer='zeros')
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        if not os.path.exists(img_path):
+            return None, None
+        image = Image.open(img_path).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        return image, img_path
 
-    def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.cast(y_true, 'float32')
-        y_pred = tf.cast(tf.round(y_pred), 'float32')
+# Custom collate function to filter out None entries
+def collate_fn(batch):
+    batch = list(filter(lambda x: x[0] is not None, batch))
+    return torch.utils.data.default_collate(batch)
 
-        tp = tf.reduce_sum(tf.cast(y_true * y_pred, 'float32'))
-        predicted_positives = tf.reduce_sum(tf.cast(y_pred, 'float32'))
-        possible_positives = tf.reduce_sum(tf.cast(y_true, 'float32'))
-
-        precision = tp / (predicted_positives + tf.keras.backend.epsilon())
-        recall = tp / (possible_positives + tf.keras.backend.epsilon())
-
-        f1 = 2 * (precision * recall) / (precision + recall + tf.keras.backend.epsilon())
-
-        self.precision.assign(precision)
-        self.recall.assign(recall)
-        self.f1.assign(f1)
-
-    def result(self):
-        return self.f1
-
-    def reset_state(self):
-        self.precision.assign(0)
-        self.recall.assign(0)
-        self.f1.assign(0)
-
-def create_embeddings(model, dataset, device, image_info):
+# Function to create embeddings
+def create_embeddings(model, dataloader, device, image_info):
+    model.eval()
     embeddings_dict = {}
-    for image, img_path in dataset:
-        img_path = img_path.numpy().decode('utf-8')
-        print(f"Processing image {img_path}...")
-        image = tf.expand_dims(image, axis=0)  # Add batch dimension
 
-        # Debug: Check the image tensor being fed into the model
-        print(f"Image tensor shape: {image.shape}")
-        print(f"Image tensor stats - min: {tf.reduce_min(image).numpy()}, max: {tf.reduce_max(image).numpy()}, mean: {tf.reduce_mean(image).numpy()}")
+    with torch.no_grad():
+        for images, img_paths in tqdm(dataloader):
+            images = images.to(device)
+            outputs = model(images)
 
-        output = model.predict(image)
-        embedding = output.flatten().tolist()  # Convert to list
-
-        # Add brand and family information
-        brand = image_info[img_path]['Brand']
-        family = image_info[img_path]['Family']
-
-        embeddings_dict[img_path] = {
-            'embedding': embedding,
-            'brand': brand,
-            'family': family
-        }
-
-        # Debug: Print the embedding to check if it is changing
-        print(f"Embedding for {img_path}: {embedding[:5]}...")  # Print first 5 elements of the embedding for debugging
+            for img_path, output in zip(img_paths, outputs):
+                embedding = output.cpu().numpy().flatten().tolist()
+                brand = image_info[img_path]['Brand']
+                family = image_info[img_path]['Family']
+                embeddings_dict[img_path] = {
+                    'embedding': embedding,
+                    'brand': brand,
+                    'family': family
+                }
 
     return embeddings_dict
 
-def save_embeddings(embeddings_dict, output_file='embeddings_clasifier_vibrant_blaze_33.json'):
+# Function to save embeddings
+def save_embeddings(embeddings_dict, output_file='embeddings_classifier_family_v2.json'):
     with open(output_file, 'w') as f:
         json.dump(embeddings_dict, f)
     print(f"Embeddings saved to {output_file}")
 
+# Function to load JSON data
+def load_json_data(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+# Function to prepare the dataframe
+def prepare_dataframe(data):
+    return [{key.replace(':', '').strip(): value for key, value in item.items()} for item in data]
+
+# Function to check image paths
+def check_image_paths(df, image_column):
+    return df[df[image_column].apply(os.path.exists)]
+
 def main_knn(weights_path):
     data_path = 'data/watches_database_main.json'
-    with open(data_path, 'r') as file:
-        raw_data = json.load(file)
-    
-    processed_data = [{key.replace(':', '').strip(): value for key, value in item.items()} for item in raw_data]
+    raw_data = load_json_data(data_path)
+
+    processed_data = prepare_dataframe(raw_data)
     grouped_images = {item['Brand']: [] for item in processed_data}
     for item in processed_data:
         grouped_images[item['Brand']].append(item['Image Path'])
@@ -121,24 +108,24 @@ def main_knn(weights_path):
     # Flatten the grouped images into a list of image paths
     image_paths = [img for brand_images in grouped_images.values() for img in brand_images]
 
-    dataset = WatchDataset(image_paths)
+    dataset = WatchDataset(image_paths, image_info)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4, collate_fn=collate_fn)
 
-    embedding_size = 30
-    custom_objects = {'F1Score': F1Score}
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Load the model with custom objects
-    model = load_model(weights_path, custom_objects=custom_objects)
-    model = tf.keras.Model(inputs=model.input, outputs=model.layers[-2].output)  # Assuming the last layer is softmax
-
-    device = 'cpu'  # or 'cuda' if you want to run on GPU
+    # Load the model and set it to evaluation mode
+    model = WatchClassificationModel(num_classes=70)
+    model.base_model.classifier[1] = nn.Identity()  # Removing the last layer to get embeddings
+    model.load_state_dict(torch.load(weights_path, map_location=device), strict=False)
+    model = model.to(device)
 
     # Create embeddings for all watches
-    embeddings_dict = create_embeddings(model, dataset, device, image_info)
-    
+    embeddings_dict = create_embeddings(model, dataloader, device, image_info)
+
     # Save embeddings to a JSON file
     save_embeddings(embeddings_dict)
 
-# Example of calling main_knn with a specific model path and query index
+# Example of calling main_knn with a specific model path
 if __name__ == "__main__":
-    model_weights_path = "trained_vgg_model.h5"  # Change to your actual model path
+    model_weights_path = "best_family_model.pth"  # Change to your actual model path
     main_knn(model_weights_path)
