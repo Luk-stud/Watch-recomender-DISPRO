@@ -29,6 +29,22 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
 
     return embeddings, paths, brands, families
 
+    with open(embedding_file, 'r') as f:
+        embeddings_dict = json.load(f)
+    paths = list(embeddings_dict.keys())
+    # Replace local paths with cloud paths
+    bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
+    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/images/"
+    local_path_prefix = "scraping_output/images/"  # This should match the local folder structure in your JSON
+    # Update paths to be full URLs to the cloud storage
+    paths = [path.replace(local_path_prefix, cloud_path_prefix) for path in paths]
+    
+    embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
+    brands = [v['brand'] for v in embeddings_dict.values()]
+    families = [v['family'] for v in embeddings_dict.values()]
+
+    return embeddings, paths, brands, families
+
 # Call the function to load embeddings and initialize variables
 embeddings, paths, brands, families = load_embeddings()
 
