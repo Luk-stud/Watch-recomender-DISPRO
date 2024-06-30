@@ -1,4 +1,3 @@
-# Import necessary libraries
 import streamlit as st
 import json
 import numpy as np
@@ -7,6 +6,9 @@ from PIL import Image
 import random
 import os
 from collections import Counter
+
+# Set page configuration
+st.set_page_config(layout="wide")
 
 # Define the function to load embeddings
 def load_embeddings(embedding_file='embeddings_v3.json'):
@@ -63,7 +65,6 @@ def knn_query(knn, query_embedding, n_neighbors=6, min_distance=0.0001):
     return np.array(filtered_distances), np.array(filtered_indices)
 
 # Streamlit layout
-st.set_page_config(layout="wide")
 st.title('Watch Recommender System')
 
 # Layout columns
