@@ -7,6 +7,7 @@ from PIL import Image
 import random
 import os
 from collections import Counter
+import urllib.parse
 
 # Set page configuration
 st.set_page_config(layout="wide")
@@ -18,10 +19,10 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
     paths = list(embeddings_dict.keys())
     # Replace local paths with cloud paths
     bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
-    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/"
-    local_path_prefix = "scraping_output/images/"  # Adjust if your local path structure is different
-    # Update paths to be full URLs to the cloud storage
-    paths = [path.replace(local_path_prefix, cloud_path_prefix) if path.startswith(local_path_prefix) else path for path in paths]
+    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/images/"
+    local_path_prefix = "scraping_output/images/"  # This should match the local folder structure in your JSON
+    # Update paths to be full URLs to the cloud storage and URL-encode them
+    paths = [urllib.parse.quote(path.replace(local_path_prefix, cloud_path_prefix)) for path in paths]
     
     embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
     brands = [v['brand'] for v in embeddings_dict.values()]
