@@ -16,7 +16,7 @@ st.set_page_config(layout="wide")
 # Define the function to load embeddings
 def load_embeddings():
     # URL of the embeddings file in Google Cloud Storage
-    embeddings_url = 'https://storage.cloud.google.com/watch_images_recommender/embeddings_classifier_family_v2.json'
+    embeddings_url = 'https://storage.googleapis.com/download/storage/v1/b/watch_images_recommender/o/embeddings_classifier_family_v2.json?alt=media'
     
     # Make a request to get the embeddings file
     response = requests.get(embeddings_url)
