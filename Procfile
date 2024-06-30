@@ -1,1 +1,1 @@
-web: streamlit run streamlit_knn_with_embeddings.py
+web: streamlit run --server.port $PORT your_streamlit_script.py
