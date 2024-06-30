@@ -1,3 +1,4 @@
+# Import necessary libraries
 import streamlit as st
 import json
 import numpy as np
@@ -7,25 +8,20 @@ import random
 import os
 from collections import Counter
 
+# Define the function to load embeddings
 def load_embeddings(embedding_file='embeddings_classifier_family_v2.json'):
     with open(embedding_file, 'r') as f:
         embeddings_dict = json.load(f)
-    paths = list(embeddings_dict.keys())
-    # Replace local paths with cloud paths
-    bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
-    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/"
-    local_path_prefix = "images/"  # Adjust if your local path structure is different
-    # Update paths to be full URLs to the cloud storage
-    paths = [path.replace(local_path_prefix, cloud_path_prefix) for path in paths]
-    
+    paths = [f"https://storage.googleapis.com/watch_images_recommender/{path}" for path in embeddings_dict.keys()]
     embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
     brands = [v['brand'] for v in embeddings_dict.values()]
     families = [v['family'] for v in embeddings_dict.values()]
-
     return embeddings, paths, brands, families
 
+# Call the function to load embeddings and initialize variables
+embeddings, paths, brands, families = load_embeddings()
 
-# Prepare unique list of brands and models
+# Process data to get unique brands and create a brand-model dictionary
 unique_brands = sorted(set(brands))
 brand_model_dict = {}
 for path, brand, family in zip(paths, brands, families):
@@ -34,29 +30,29 @@ for path, brand, family in zip(paths, brands, families):
     if family not in brand_model_dict[brand]:
         brand_model_dict[brand].append(family)
 
-# Find k-NN
+# Define and find k-NN
 def find_knn(embeddings, n_neighbors=6):
     knn = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean')
     knn.fit(embeddings)
     return knn
 
-knn = find_knn(embeddings, n_neighbors=6)
+knn = find_knn(embeddings)
 
+# Define a query function for k-NN
 def knn_query(knn, query_embedding, n_neighbors=6, min_distance=0.0001):
     distances, indices = knn.kneighbors([query_embedding], n_neighbors=n_neighbors)
     filtered_indices = []
     filtered_distances = []
     brand_count = Counter()
-
     for distance, index in zip(distances[0], indices[0]):
-        if distance > min_distance:
-            brand = brands[index]
-            if brand_count[brand] < 2:
-                filtered_indices.append(index)
-                filtered_distances.append(distance)
-                brand_count[brand] += 1
-
+        if distance > min_distance and brand_count[brands[index]] < 2:
+            filtered_indices.append(index)
+            filtered_distances.append(distance)
+            brand_count[brands[index]] += 1
     return np.array(filtered_distances), np.array(filtered_indices)
+
+# Streamlit layout and logic as defined previously...
+
 
 # Streamlit layout
 st.set_page_config(layout="wide")
