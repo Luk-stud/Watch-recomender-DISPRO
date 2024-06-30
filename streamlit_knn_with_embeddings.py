@@ -26,7 +26,6 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
 
     return embeddings, paths, brands, families
 
-
 # Call the function to load embeddings and initialize variables
 embeddings, paths, brands, families = load_embeddings()
 
@@ -62,7 +61,6 @@ def knn_query(knn, query_embedding, n_neighbors=6, min_distance=0.0001):
 
 # Streamlit layout and logic as defined previously...
 
-
 # Streamlit layout
 st.set_page_config(layout="wide")
 st.title('Watch Recommender System')
@@ -92,7 +90,10 @@ with left_col:
             selected_watch_path = st.selectbox('Select a Watch', watch_paths)
 
             if selected_watch_path:
-                st.image(selected_watch_path, caption=f'{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}')
+                try:
+                    st.image(selected_watch_path, caption=f'{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}')
+                except Exception as e:
+                    st.error(f"Failed to load image from URL: {selected_watch_path}. Error: {str(e)}")
     else:
         if 'random_watch' not in st.session_state or st.button('Find Another One'):
             selected_watch_path = random.choice(paths)
@@ -101,7 +102,10 @@ with left_col:
             selected_watch_path = st.session_state['random_watch']
 
         watch_dict = {path: (brand, family) for path, brand, family in zip(paths, brands, families)}
-        st.image(selected_watch_path, caption=f"{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}")
+        try:
+            st.image(selected_watch_path, caption=f"{watch_dict[selected_watch_path][0]} - {watch_dict[selected_watch_path][1]}")
+        except Exception as e:
+            st.error(f"Failed to load image from URL: {selected_watch_path}. Error: {str(e)}")
 
     if selected_watch_path:
         if st.button('Find Similar Watches'):
@@ -124,5 +128,8 @@ with right_col:
         for row in range(rows):
             cols = st.columns(3)
             for col, (neighbor_path, distance) in zip(cols, recommendations[row*3:(row+1)*3]):
-                col.image(neighbor_path, caption=f'{watch_dict[neighbor_path][0]} - {watch_dict[neighbor_path][1]}')
-                col.write(f"Distance: {distance:.4f}")
+                try:
+                    col.image(neighbor_path, caption=f'{watch_dict[neighbor_path][0]} - {watch_dict[neighbor_path][1]}')
+                    col.write(f"Distance: {distance:.4f}")
+                except Exception as e:
+                    col.error(f"Failed to load image from URL: {neighbor_path}. Error: {str(e)}")
