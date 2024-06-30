@@ -16,11 +16,25 @@ st.set_page_config(layout="wide")
 # Define the function to load embeddings
 def load_embeddings():
     # URL of the embeddings file in Google Cloud Storage
-    embeddings_url = 'https://storage.googleapis.com/download/storage/v1/b/watch_images_recommender/o/embeddings_classifier_family_v2.json?alt=media'
+    embeddings_url = 'https://storage.cloud.google.com/watch_images_recommender/embeddings_classifier_family_v2.json'
     
     # Make a request to get the embeddings file
     response = requests.get(embeddings_url)
-    embeddings_dict = response.json()
+    
+    # Check if the request was successful
+    if response.status_code != 200:
+        st.error(f"Failed to fetch embeddings file. Status code: {response.status_code}")
+        st.stop()
+    
+    # Print the first few characters of the response to debug
+    st.write("Response text (first 500 characters):", response.text[:500])
+    
+    # Try to parse the JSON response
+    try:
+        embeddings_dict = response.json()
+    except json.JSONDecodeError as e:
+        st.error(f"Failed to decode JSON. Error: {str(e)}")
+        st.stop()
     
     paths = list(embeddings_dict.keys())
     # Replace local paths with cloud paths
@@ -38,6 +52,10 @@ def load_embeddings():
 
 # Call the function to load embeddings and initialize variables
 embeddings, paths, brands, families = load_embeddings()
+
+# Check if embeddings were loaded successfully
+if embeddings is None or paths is None or brands is None or families is None:
+    st.stop()
 
 # Debugging output to verify paths
 st.write("Sample paths:", paths[:5])
