@@ -67,7 +67,7 @@ for path, brand, family in zip(paths, brands, families):
         brand_model_dict[brand].append(family)
 
 # Define and find k-NN
-def find_knn(embeddings, n_neighbors=6):
+def find_knn(embeddings, n_neighbors=30):
     knn = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean')
     knn.fit(embeddings)
     return knn
@@ -75,16 +75,18 @@ def find_knn(embeddings, n_neighbors=6):
 knn = find_knn(embeddings)
 
 # Define a query function for k-NN
-def knn_query(knn, query_embedding, n_neighbors=30, min_distance=0.0001):
+def knn_query(knn, query_embedding, n_neighbors=30, max_per_brand=2):
     distances, indices = knn.kneighbors([query_embedding], n_neighbors=n_neighbors)
     filtered_indices = []
     filtered_distances = []
     brand_count = Counter()
     for distance, index in zip(distances[0], indices[0]):
-        if distance > min_distance and brand_count[brands[index]] < 4:
+        if brand_count[brands[index]] < max_per_brand:
             filtered_indices.append(index)
             filtered_distances.append(distance)
             brand_count[brands[index]] += 1
+        if len(filtered_indices) >= 6:
+            break
     return np.array(filtered_distances), np.array(filtered_indices)
 
 # Streamlit layout
@@ -137,7 +139,7 @@ with left_col:
             query_index = paths.index(selected_watch_path)
             query_embedding = embeddings[query_index]
 
-            distances, indices = knn_query(knn, query_embedding, n_neighbors=6)
+            distances, indices = knn_query(knn, query_embedding, n_neighbors=30, max_per_brand=2)
             neighbor_paths = [paths[i] for i in indices]
             neighbor_distances = distances
 
