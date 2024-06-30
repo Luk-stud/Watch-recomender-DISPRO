@@ -26,9 +26,6 @@ def load_embeddings():
         st.error(f"Failed to fetch embeddings file. Status code: {response.status_code}")
         st.stop()
     
-    # Print the first few characters of the response to debug
-    st.write("Response text (first 500 characters):", response.text[:500])
-    
     # Try to parse the JSON response
     try:
         embeddings_dict = response.json()
@@ -39,7 +36,7 @@ def load_embeddings():
     paths = list(embeddings_dict.keys())
     # Replace local paths with cloud paths
     bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
-    cloud_path_prefix = f"https://storage.cloud.google.com/{bucket_name}/images/"
+    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/images/"
     local_path_prefix = "scraping_output/images/"  # This should match the local folder structure in your JSON
     # Update paths to be full URLs to the cloud storage and URL-encode the path part only
     paths = [cloud_path_prefix + urllib.parse.quote(path.replace(local_path_prefix, "")) for path in paths]
