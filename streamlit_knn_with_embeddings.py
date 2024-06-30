@@ -18,7 +18,7 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
     cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/"
     local_path_prefix = "images/"  # Adjust if your local path structure is different
     # Update paths to be full URLs to the cloud storage
-    paths = [path.replace(local_path_prefix, cloud_path_prefix) for path in paths]
+    paths = [path.replace(local_path_prefix, cloud_path_prefix) if path.startswith(local_path_prefix) else path for path in paths]
     
     embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
     brands = [v['brand'] for v in embeddings_dict.values()]
@@ -28,6 +28,9 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
 
 # Call the function to load embeddings and initialize variables
 embeddings, paths, brands, families = load_embeddings()
+
+# Debugging output to verify paths
+st.write("Sample paths:", paths[:5])
 
 # Process data to get unique brands and create a brand-model dictionary
 unique_brands = sorted(set(brands))
@@ -58,8 +61,6 @@ def knn_query(knn, query_embedding, n_neighbors=6, min_distance=0.0001):
             filtered_distances.append(distance)
             brand_count[brands[index]] += 1
     return np.array(filtered_distances), np.array(filtered_indices)
-
-# Streamlit layout and logic as defined previously...
 
 # Streamlit layout
 st.set_page_config(layout="wide")
