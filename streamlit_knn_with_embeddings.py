@@ -21,8 +21,8 @@ def load_embeddings(embedding_file='embeddings_v3.json'):
     bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
     cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/images/"
     local_path_prefix = "scraping_output/images/"  # This should match the local folder structure in your JSON
-    # Update paths to be full URLs to the cloud storage and URL-encode them
-    paths = [urllib.parse.quote(path.replace(local_path_prefix, cloud_path_prefix)) for path in paths]
+    # Update paths to be full URLs to the cloud storage and URL-encode the path part only
+    paths = [cloud_path_prefix + urllib.parse.quote(path.replace(local_path_prefix, "")) for path in paths]
     
     embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
     brands = [v['brand'] for v in embeddings_dict.values()]
