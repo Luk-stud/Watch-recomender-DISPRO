@@ -1,3 +1,4 @@
+# Import necessary libraries
 import streamlit as st
 import json
 import numpy as np
@@ -11,14 +12,14 @@ from collections import Counter
 st.set_page_config(layout="wide")
 
 # Define the function to load embeddings
-def load_embeddings(embedding_file='embeddings_v3.json'):
+def load_embeddings(embedding_file='embeddings_classifier_family_v2.json'):
     with open(embedding_file, 'r') as f:
         embeddings_dict = json.load(f)
     paths = list(embeddings_dict.keys())
     # Replace local paths with cloud paths
     bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
     cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/"
-    local_path_prefix = "images/"  # Adjust if your local path structure is different
+    local_path_prefix = "scraping_output/images/"  # Adjust if your local path structure is different
     # Update paths to be full URLs to the cloud storage
     paths = [path.replace(local_path_prefix, cloud_path_prefix) if path.startswith(local_path_prefix) else path for path in paths]
     
