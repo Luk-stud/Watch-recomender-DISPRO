@@ -8,14 +8,20 @@ import random
 import os
 from collections import Counter
 import urllib.parse
+import requests
 
 # Set page configuration
 st.set_page_config(layout="wide")
 
 # Define the function to load embeddings
-def load_embeddings(embedding_file='embeddings_v3.json'):
-    with open(embedding_file, 'r') as f:
-        embeddings_dict = json.load(f)
+def load_embeddings():
+    # URL of the embeddings file in Google Cloud Storage
+    embeddings_url = 'https://storage.cloud.google.com/watch_images_recommender/embeddings_classifier_family_v2.json'
+    
+    # Make a request to get the embeddings file
+    response = requests.get(embeddings_url)
+    embeddings_dict = response.json()
+    
     paths = list(embeddings_dict.keys())
     # Replace local paths with cloud paths
     bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
