@@ -75,13 +75,13 @@ def find_knn(embeddings, n_neighbors=6):
 knn = find_knn(embeddings)
 
 # Define a query function for k-NN
-def knn_query(knn, query_embedding, n_neighbors=6, min_distance=0.0001):
+def knn_query(knn, query_embedding, n_neighbors=30, min_distance=0.0001):
     distances, indices = knn.kneighbors([query_embedding], n_neighbors=n_neighbors)
     filtered_indices = []
     filtered_distances = []
     brand_count = Counter()
     for distance, index in zip(distances[0], indices[0]):
-        if distance > min_distance and brand_count[brands[index]] < 2:
+        if distance > min_distance and brand_count[brands[index]] < 4:
             filtered_indices.append(index)
             filtered_distances.append(distance)
             brand_count[brands[index]] += 1
