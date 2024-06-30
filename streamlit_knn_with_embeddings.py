@@ -9,7 +9,7 @@ import os
 from collections import Counter
 
 # Define the function to load embeddings
-def load_embeddings(embedding_file='embeddings_classifier_family_v2.json'):
+def load_embeddings(embedding_file='embeddings_v3.json'):
     with open(embedding_file, 'r') as f:
         embeddings_dict = json.load(f)
     paths = list(embeddings_dict.keys())
