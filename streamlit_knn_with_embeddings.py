@@ -9,14 +9,23 @@ import os
 from collections import Counter
 
 # Define the function to load embeddings
-def load_embeddings(embedding_file='embeddings_v3.json'):
+def load_embeddings(embedding_file='embeddings_classifier_family_v2.json'):
     with open(embedding_file, 'r') as f:
         embeddings_dict = json.load(f)
-    paths = [f"https://storage.googleapis.com/watch_images_recommender/{path}" for path in embeddings_dict.keys()]
+    paths = list(embeddings_dict.keys())
+    # Replace local paths with cloud paths
+    bucket_name = "watch_images_recommender"  # Replace with your actual bucket name
+    cloud_path_prefix = f"https://storage.googleapis.com/{bucket_name}/"
+    local_path_prefix = "images/"  # Adjust if your local path structure is different
+    # Update paths to be full URLs to the cloud storage
+    paths = [path.replace(local_path_prefix, cloud_path_prefix) for path in paths]
+    
     embeddings = np.array([v['embedding'] for v in embeddings_dict.values()])
     brands = [v['brand'] for v in embeddings_dict.values()]
     families = [v['family'] for v in embeddings_dict.values()]
+
     return embeddings, paths, brands, families
+
 
 # Call the function to load embeddings and initialize variables
 embeddings, paths, brands, families = load_embeddings()
