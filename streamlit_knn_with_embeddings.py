@@ -9,7 +9,7 @@ import os
 from collections import Counter
 
 # Define the function to load embeddings
-def load_embeddings(embedding_file='embeddings_classifier_family_v2.json'):
+def load_embeddings(embedding_file='embeddings_v3.json'):
     with open(embedding_file, 'r') as f:
         embeddings_dict = json.load(f)
     paths = [f"https://storage.googleapis.com/watch_images_recommender/{path}" for path in embeddings_dict.keys()]
