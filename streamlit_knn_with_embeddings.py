@@ -93,6 +93,11 @@ st.title('Watch Recommender System')
 # Layout columns
 left_col, right_col = st.columns([1, 2])
 
+# Add seed input
+seed = st.sidebar.number_input('Random Seed', value=42)
+random.seed(seed)
+np.random.seed(seed)
+
 with left_col:
     st.header("Choose a Watch")
     
@@ -152,7 +157,7 @@ with right_col:
         rows = len(recommendations) // 3 + int(len(recommendations) % 3 > 0)
         for row in range(rows):
             cols = st.columns(3)
-            for col, (neighbor_path, distance) in zip(cols, recommendations[row*3:(row+1)*3]):
+            for col, (neighbor_path, distance) in zip(cols, recommendations[row*3:(row+1)*3)]):
                 try:
                     col.image(neighbor_path, caption=f'{watch_dict[neighbor_path][0]} - {watch_dict[neighbor_path][1]}')
                     col.write(f"Distance: {distance:.4f}")
