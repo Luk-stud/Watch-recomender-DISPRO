@@ -157,7 +157,7 @@ with right_col:
         rows = len(recommendations) // 3 + int(len(recommendations) % 3 > 0)
         for row in range(rows):
             cols = st.columns(3)
-            for col, (neighbor_path, distance) in zip(cols, recommendations[row*3:(row+1)*3)]):
+            for col, (neighbor_path, distance) in zip(cols, recommendations[row*3:(row+1)*3]):
                 try:
                     col.image(neighbor_path, caption=f'{watch_dict[neighbor_path][0]} - {watch_dict[neighbor_path][1]}')
                     col.write(f"Distance: {distance:.4f}")
