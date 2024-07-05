@@ -93,8 +93,8 @@ st.title('Watch Recommender System')
 # Layout columns
 left_col, right_col = st.columns([1, 2])
 
-# Add seed input
-seed = st.sidebar.number_input('Random Seed', value=42)
+# Set random seed
+seed = 42
 random.seed(seed)
 np.random.seed(seed)
 
