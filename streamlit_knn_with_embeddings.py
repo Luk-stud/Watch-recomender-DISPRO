@@ -54,8 +54,6 @@ embeddings, paths, brands, families = load_embeddings()
 if embeddings is None or paths is None or brands is None or families is None:
     st.stop()
 
-# Debugging output to verify paths
-st.write("Sample paths:", paths[:5])
 
 # Process data to get unique brands and create a brand-model dictionary
 unique_brands = sorted(set(brands))
@@ -75,7 +73,7 @@ def find_knn(embeddings, n_neighbors=30):
 knn = find_knn(embeddings)
 
 # Define a query function for k-NN
-def knn_query(knn, query_embedding, n_neighbors=30, min_distance=0.00001, max_per_brand=2):
+def knn_query(knn, query_embedding, n_neighbors=50, min_distance=0.00001, max_per_brand=2):
     distances, indices = knn.kneighbors([query_embedding], n_neighbors=n_neighbors)
     filtered_indices = []
     filtered_distances = []
