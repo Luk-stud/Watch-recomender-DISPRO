@@ -93,11 +93,6 @@ st.title('Watch Recommender System')
 # Layout columns
 left_col, right_col = st.columns([1, 2])
 
-# Set random seed
-seed = 42
-random.seed(seed)
-np.random.seed(seed)
-
 with left_col:
     st.header("Choose a Watch")
     
